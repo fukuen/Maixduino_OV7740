@@ -42,8 +42,9 @@ public:
     ~Maixduino_OV7740();
     
     virtual bool begin();
+    bool begin2(int8_t choice_dev = 0);
     virtual void end();
-    bool reset();
+    bool reset(int8_t choice_dev = 0);
     bool setPixFormat(pixformat_t pixFormat);
     bool setFrameSize(framesize_t frameSize);
     virtual bool run(bool run);
@@ -65,9 +66,10 @@ private:
     uint8_t  _pwdnPoliraty;  // PWDN poliraty flag
     uint8_t  _slaveAddr;     // camera address
     uint8_t  _id;
+    uint8_t  _choice_dev;
     uint32_t _freq;
 
-    int dvpInit(uint32_t freq = 24000000);
+    int dvpInit(uint32_t freq = 24000000, uint8_t choice_dev = 0);
     int dvpInitIrq();
 
 /*    
@@ -83,7 +85,7 @@ private:
 */
 
     int sensor_ov_detect();
-    int sensro_gc_detect();
+    int sensor_gc_detect();
 
     int ov7740_reset();
     int ov7740_read_reg(uint8_t reg_addr);

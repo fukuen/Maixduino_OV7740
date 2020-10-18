@@ -637,38 +637,28 @@ static const uint8_t qvga_config[][2] = { //k210
 };
 
 static const uint8_t vga_config[][2] = { //k210 
-    {0xfe , 0x00},
-    // window
-        //windowing mode
-	// {0x09 , 0x00},
-    // {0x0a , 0x78},
-	// {0x0b , 0x00},
-	// {0x0c , 0xa0},
-    // {0x0d , 0x00},
-	// {0x0e , 0xf8},
-	// {0x0f , 0x01},
-	// {0x10 , 0x48},
-        //crop mode 
-    {0x50 , 0x00},
-    // {0x51, 0x00},
-    // {0x52, 0x78},
-    // {0x53, 0x00},
-    // {0x54, 0xa0},
-    // {0x55, 0x00},
-    // {0x56, 0xf0},
-    // {0x57, 0x01},
-    // {0x58, 0x40},
-    //subsample 1/2
-    // {0x59, 0x00},
-    // {0x5a, 0x00},
-    // {0x5b, 0x00},
-    // {0x5c, 0x00},
-    // {0x5d, 0x00},
-    // {0x5e, 0x00},
-    // {0x5f, 0x00},
-    // {0x60, 0x00},
-    // {0x61, 0x00},
-    // {0x62, 0x00},
+    {0xfe, 0x00},
+    {0x4b, 0x8b},
+    {0x50, 0x01},
+    {0x51, 0x00},
+    {0x52, 0x00},
+    {0x53, 0x00},
+    {0x54, 0x00},
+    {0x55, 0x01},
+    {0x56, 0xe0},
+    {0x57, 0x02},
+    {0x58, 0x80},
+    {0x59, 0x11},
+    {0x5a, 0x02},
+    {0x5b, 0x00},
+    {0x5c, 0x00},
+    {0x5d, 0x00},
+    {0x5e, 0x00},
+    {0x5f, 0x00},
+    {0x60, 0x00},
+    {0x61, 0x00},
+    {0x62, 0x00},
+
     {0x00, 0x00}
 };
 
@@ -716,6 +706,11 @@ Maixduino_OV7740::~Maixduino_OV7740()
 
 bool Maixduino_OV7740::begin()
 {
+    return begin2();
+}
+
+bool Maixduino_OV7740::begin2(int8_t choice_dev)
+{
     if(_dataBuffer)
         free(_dataBuffer);
     if(_aiBuffer)
@@ -735,7 +730,7 @@ bool Maixduino_OV7740::begin()
         free(_dataBuffer);
         return false;
     }
-    if(!reset())
+    if(!reset(choice_dev))
         return false;
     if( !setPixFormat(_pixFormat))
         return false;
@@ -754,9 +749,9 @@ void Maixduino_OV7740::end()
     _aiBuffer   = nullptr;
 }
 
-bool Maixduino_OV7740::reset()
+bool Maixduino_OV7740::reset(int8_t choice_dev)
 {
-    if(dvpInit() != 0)
+    if(dvpInit(24000000, choice_dev) != 0)
         return false;
 //    if(ov7740_reset() != 0)
 //        return false;
@@ -872,11 +867,14 @@ void Maixduino_OV7740::setInvert(bool invert)
 
 
 
-int Maixduino_OV7740::dvpInit(uint32_t freq)
+int Maixduino_OV7740::dvpInit(uint32_t freq, uint8_t choice_dev)
 {
+    int pwdn_lock = 0;
+
     // just support RGB565 and YUV442 on k210
     configASSERT(_pixFormat==PIXFORMAT_RGB565 || _pixFormat==PIXFORMAT_YUV422);
     _freq  = freq;
+    _choice_dev = choice_dev;
 
 	fpioa_set_function(47, FUNC_CMOS_PCLK);
 	fpioa_set_function(46, FUNC_CMOS_XCLK);
@@ -907,14 +905,35 @@ int Maixduino_OV7740::dvpInit(uint32_t freq)
     DCMI_PWDN_LOW();
     msleep(10);
 
+/*
     if(0 == sensor_ov_detect()){//find ov sensor
         // printf("find ov sensor\n");
         dvp_set_xclk_rate(22000000);
     }
-    else if(0 == sensro_gc_detect()){//find gc0328 sensor
-        // printf("find gc3028\n");
+    else if(0 == sensor_gc_detect()){//find gc0328 sensor
+        // printf("find gc0328\n");
     }
     else{
+        return -1;
+    }
+*/
+    bool limit = _choice_dev != 0;
+    printf("choice: %d ¥n", _choice_dev);
+
+    if ((limit == false || _choice_dev == 1) && 0 == sensor_ov_detect())
+    {
+        // find ov sensor
+        printf("find ov sensor\n");
+        pwdn_lock = 1;
+        dvp_set_xclk_rate(22000000);
+    }
+    else if ((limit == false || _choice_dev == 2) && 0 == sensor_gc_detect())
+    {
+        cambus_set_writeb_delay(2);
+    }
+    else
+    {
+        printf("no sensor\n");
         return -1;
     }
 
@@ -931,13 +950,14 @@ int Maixduino_OV7740::dvpInit(uint32_t freq)
 	dvp_set_ai_addr( (uint32_t)((long)_aiBuffer), (uint32_t)((long)(_aiBuffer+_width*_height)), (uint32_t)((long)(_aiBuffer+_width*_height*2)));
 	dvp_set_display_addr( (uint32_t)((long)_dataBuffer) );
 
+    if (pwdn_lock) (_pwdnPoliraty == ACTIVE_HIGH) ? (DCMI_PWDN_LOW()) : (DCMI_PWDN_HIGH());
 /*
     if(0 == sensor_ov_detect()){//find ov sensor
         // printf("find ov sensor\n");
         return 0;
     }
-    else if(0 == sensro_gc_detect()){//find gc0328 sensor
-        // printf("find gc3028\n");
+    else if(0 == sensor_gc_detect()){//find gc0328 sensor
+        // printf("find gc0328\n");
         return 0;
     }
 */
@@ -1120,11 +1140,11 @@ int Maixduino_OV7740::sensor_ov_detect()
     return 0;
 }
 
-int Maixduino_OV7740::sensro_gc_detect()
+int Maixduino_OV7740::sensor_gc_detect()
 {
     DCMI_PWDN_HIGH();//enable gc0328 要恢复 normal 工作模式，需将 PWDN pin 接入低电平即可，同时写入初始化寄存器即可
 //    DCMI_PWDN_LOW();
-    DCMI_RESET_LOW();//reset gc3028
+    DCMI_RESET_LOW();//reset gc0328
     msleep(10);
     DCMI_RESET_HIGH();
     msleep(10);
